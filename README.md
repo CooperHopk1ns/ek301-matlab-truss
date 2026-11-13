@@ -1,1 +1,1 @@
-To run simply download the file and open it in Matlab, then click run and it should generate with the two truss designs. You can test a new truss with the build truss function and the proper inputs.
+To run simply download the file and open it in Matlab, then click run and it should generate with the two truss designs. You can test a new truss with the build truss function and the proper matrix inputs.
