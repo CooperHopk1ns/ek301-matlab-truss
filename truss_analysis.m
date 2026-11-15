@@ -1,4 +1,5 @@
 %% EK301 TRUSS DESIGN PROJECT - PRELIMINARY DESIGN ANALYSIS (Fall 2026)
+% Members: Jose Chavez Aldama, Benjamin Gonzalez, and Cooper Hopkins
 % =========================================================================
 % File    : TrussPrelimDesign.m
 % Needs   : MATLAB R2016b or newer (local functions at the end of a script).
