@@ -7,7 +7,8 @@
 % WHAT THIS FILE DOES (maps to the Preliminary Design Manual)
 %   Section 0  Settings           : group info, buckling fit (Eq. 10), cost (Eq. 14), specs
 %   Section 1  Model verification : solves the practice truss and compares to the hand solution
-%   Section 2  Define designs     : two candidate trusses (STARTER DESIGNS - replace with yours)
+%   Section 2  Define designs     : two candidate trusses (STARTER DESIGNS - replace with yours),
+%                                   plus "what-if" versions with the load pushing down on a TOP joint
 %   Section 3  Analyze designs    : spec checks, member forces, critical member, max load,
 %                                   cost, load/cost ratio, diagram, results table
 %   Section 4  Compare designs    : side-by-side summary for the Discussion section
@@ -88,21 +89,31 @@ end
 % own. Each design is just: joint X, joint Y, member list (joint pairs), then
 % pin joint, roller joint, load joint, load in oz. Everything else is automatic.
 %
-% Design 1: flat-top Warren truss, 7 joints / 11 members, load joint 1.0 in up
-D1 = buildTruss('Design 1 (flat-top Warren)', ...
-        [0 10  18.5 32 5    14.25 25.25], ...
-        [0 1.0 0    0  8    9    8    ], ...
-        [1 2; 2 3; 3 4; 1 5; 5 2; 5 6; 6 2; 6 3; 6 7; 7 3; 7 4], ...
-        1, 4, 2, Wtest);
+% WHERE IS THE LOAD APPLIED?  At the "load joint" you choose (7th argument of
+% buildTruss). The manual requires it to be a low joint 0.5-1.5 in above the pin
+% joint, so the load hangs DOWN from that joint (as in Fig. 1).
+% The "top-loaded" cases below instead push down on the highest joint. They are
+% WHAT-IF comparisons only: they violate the load-joint height spec (the spec
+% check will say FAIL), so do not submit one as your design.
+memberList = [1 2; 2 3; 3 4; 1 5; 5 2; 5 6; 6 2; 6 3; 6 7; 7 3; 7 4];
 
-% Design 2: peaked-top Warren truss, 7 joints / 11 members, load joint 1.5 in up
-D2 = buildTruss('Design 2 (peaked-top Warren)', ...
-        [0 12.5 21 32 5.5 14.75 24 ], ...
-        [0 1.5  0  0  8.5 11    8.5], ...
-        [1 2; 2 3; 3 4; 1 5; 5 2; 5 6; 6 2; 6 3; 6 7; 7 3; 7 4], ...
-        1, 4, 2, Wtest);
+% Geometry 1: flat-top Warren truss, 7 joints / 11 members
+X1 = [0 10  18.5 32 5    14.25 25.25];
+Y1 = [0 1.0 0    0  8    9     8    ];
+% Geometry 2: peaked-top Warren truss, 7 joints / 11 members
+X2 = [0 12.5 21 32 5.5 14.75 24 ];
+Y2 = [0 1.5  0  0  8.5 11    8.5];
 
-designs = {D1, D2};
+% ORIGINAL designs: load at joint 2, the low joint on the bottom chord (spec-compliant).
+% Design 1 must stay FIRST: it is the one saved to the Gradescope .mat file.
+D1 = buildTruss('Design 1 (flat-top Warren)',   X1, Y1, memberList, 1, 4, 2, Wtest);
+D2 = buildTruss('Design 2 (peaked-top Warren)', X2, Y2, memberList, 1, 4, 2, Wtest);
+
+% WHAT-IF designs: same geometry, load pushes down on joint 6 (the top joint)
+D1top = buildTruss('Design 1, top-loaded (what-if)', X1, Y1, memberList, 1, 4, 6, Wtest);
+D2top = buildTruss('Design 2, top-loaded (what-if)', X2, Y2, memberList, 1, 4, 6, Wtest);
+
+designs = {D1, D2, D1top, D2top};
 
 %% ======================= SECTION 3: ANALYZE EACH DESIGN ==================
 results = cell(size(designs));
@@ -110,8 +121,9 @@ for k = 1:numel(designs)
     T = designs{k};
     fprintf('\n=====================  %s  =====================\n', T.name);
 
-    checkDesignSpecs(T, spec);                 % spec compliance
+    specOk = checkDesignSpecs(T, spec);        % spec compliance
     res = analyzeDesign(T, bk, costModel);     % forces, critical member, Wmax, cost
+    res.specOk = specOk;
     if res.Wmax < spec.Wmin
         warning('%s only supports %.1f oz (< %g oz required).', ...
                 T.name, res.Wmax, spec.Wmin);
@@ -133,15 +145,20 @@ end
 
 %% ======================= SECTION 4: COMPARE DESIGNS ======================
 fprintf('\n=====================  DESIGN COMPARISON  =====================\n');
-fprintf('%-30s %6s %6s %10s %12s %10s %10s\n', 'Design', 'Joints', 'Memb.', ...
-        'Cost ($)', 'Max load(oz)', '+/- (oz)', 'oz per $');
+fprintf('%-32s %6s %6s %10s %12s %9s %9s %6s\n', 'Design', 'Joints', 'Load@', ...
+        'Cost ($)', 'Max load(oz)', '+/- (oz)', 'oz per $', 'Specs');
 for k = 1:numel(designs)
     T = designs{k}; r = results{k};
-    fprintf('%-30s %6d %6d %10.2f %12.2f %10.2f %10.4f\n', T.name, T.J, T.M, ...
-            r.cost, r.Wmax, r.Wunc, r.ratio);
+    if r.specOk, tag = 'PASS'; else, tag = 'FAIL'; end
+    fprintf('%-32s %6d %6d %10.2f %12.2f %9.2f %9.4f %6s\n', T.name, T.J, ...
+            T.loadJoint, r.cost, r.Wmax, r.Wunc, r.ratio, tag);
 end
-[~, best] = max(cellfun(@(r) r.ratio, results));
-fprintf('Highest load-to-cost ratio: %s\n', designs{best}.name);
+ratios = cellfun(@(r) r.ratio, results);
+ok     = cellfun(@(r) r.specOk, results);
+ratios(~ok) = -inf;                        % what-if designs cannot win
+[~, best] = max(ratios);
+fprintf('Highest load-to-cost ratio among spec-compliant designs: %s\n', ...
+        designs{best}.name);
 
 %% ======================= SECTION 5: DESIGN FILE FOR GRADESCOPE ===========
 % Required: .mat file with C, Sx, Sy, X, Y, L for the FIRST design.
@@ -515,18 +532,27 @@ function plotTruss(T, res)
         text(T.X(j), T.Y(j), sprintf('%d', j), 'FontSize', 8, ...
              'HorizontalAlignment', 'center');
     end
-    % supports (drawn just below their joints) and the applied load arrow
+    % supports (drawn just below their joints) and the applied load arrow (downward)
     plot(T.X(T.pin),    T.Y(T.pin) - 1.8,    '^', 'MarkerSize', 10, ...
          'MarkerFaceColor', [0.7 0.7 0.7], 'MarkerEdgeColor', 'k');
     plot(T.X(T.roller), T.Y(T.roller) - 1.8, 'o', 'MarkerSize', 10, ...
          'MarkerFaceColor', [0.7 0.7 0.7], 'MarkerEdgeColor', 'k');
     lj = T.loadJoint;  xl = T.X(lj);  yl = T.Y(lj);
-    plot([xl xl], [yl - 4.5, yl - 1.0], 'r-', 'LineWidth', 2);            % shaft
-    plot([xl - 0.4, xl, xl + 0.4], [yl - 1.8, yl - 1.0, yl - 1.8], ...    % arrow head
-         'r-', 'LineWidth', 2);
-    text(xl + 0.7, yl - 3.5, sprintf('W = %g oz', T.W), 'Color', 'r');
+    if yl > 0.5 * max(T.Y)
+        % top-loaded: arrow sits ABOVE the joint and pushes DOWN onto it
+        plot([xl xl], [yl + 4.5, yl + 0.5], 'r-', 'LineWidth', 2);            % shaft
+        plot([xl - 0.4, xl, xl + 0.4], [yl + 1.3, yl + 0.5, yl + 1.3], ...    % head points DOWN
+             'r-', 'LineWidth', 2);
+        text(xl + 0.7, yl + 3.2, sprintf('W = %g oz (downward)', T.W), 'Color', 'r');
+    else
+        % bottom-loaded: load hangs DOWN from the joint (as in Fig. 1)
+        plot([xl xl], [yl - 0.5, yl - 4.5], 'r-', 'LineWidth', 2);            % shaft
+        plot([xl - 0.4, xl, xl + 0.4], [yl - 3.7, yl - 4.5, yl - 3.7], ...    % head points DOWN
+             'r-', 'LineWidth', 2);
+        text(xl + 0.7, yl - 3.0, sprintf('W = %g oz (downward)', T.W), 'Color', 'r');
+    end
     axis equal;  grid on;  box on;
-    xlim([-3, max(T.X) + 3]);  ylim([-7, max(T.Y) + 3]);
+    xlim([-3, max(T.X) + 3]);  ylim([-7, max(T.Y) + 7]);
     xlabel('x (in)');  ylabel('y (in)');
     title(sprintf('%s  -  m%d buckles first at %.1f oz', T.name, res.critical, res.Wmax));
     text(-2, -6.3, ['blue = tension, black = compression, dashed = zero-force, ' ...
